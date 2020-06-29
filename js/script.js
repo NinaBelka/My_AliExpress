@@ -86,9 +86,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  // Реализация поиска товара
+  const searchGoods = event => {
+    event.preventDefault();
+
+    const input = event.target.elements.searchGoods;
+    const inputValue = input.value.trim();
+    if (inputValue !== '') {
+      const searchString = new RegExp(inputValue, 'i')
+      getGoods(renderCard, goods => goods.filter(item => searchString.test(item.title)));
+    }
+
+  };
+
   cartBtn.addEventListener('click', openCart);
   cart.addEventListener('click', closeCart);
   category.addEventListener('click', choiceCategory);
+  search.addEventListener('submit', searchGoods)
 
   getGoods(renderCard, randomSort);
 
