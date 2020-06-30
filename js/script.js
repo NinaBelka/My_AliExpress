@@ -13,18 +13,34 @@ document.addEventListener('DOMContentLoaded', () => {
     cartWrapper = document.querySelector('.cart-wrapper');
 
   const wishlist = [];
-  let goodsBasket = {};
+  const goodsBasket = {};
 
   // spinner
-  const loading = () => {
-    goodsWrapper.innerHTML = `
+  const loading = nameFunction => {
+    const spinner = `
           <div id="spinner"><div class="spinner-loading">
           <div><div><div></div></div><div><div></div></div>
           <div><div></div></div><div><div></div></div></div></div></div>
           `
-  }
+    if (nameFunction === 'renderCard') {
+      goodsWrapper.innerHTML = spinner
+    }
 
-  // Формирование карточки товара
+    if (nameFunction === 'renderBasket') {
+      cartWrapper.innerHTML = spinner
+    }
+  };
+
+  // Получение информации о товарах из базы данных (запрос на сервер)
+  const getGoods = (handler, filter) => {
+    loading(handler.name);
+    fetch('db/db.json')
+      .then(response => response.json())
+      .then(filter)
+      .then(handler);
+  };
+
+  // Формирование карточек товара
 
   const createCardGoods = (id, title, price, img) => {
     const card = document.createElement('div');
@@ -49,39 +65,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return card;
   };
 
-  // Перебор и вывод товаров по запросу
-
-  const renderCard = goods => {
-    goodsWrapper.textContent = '';
-
-    if (goods.length) {
-      goods.forEach(({ id, title, price, imgMin }) => {
-        goodsWrapper.append(createCardGoods(id, title, price, imgMin));
-      });
-    } else {
-      goodsWrapper.textContent = '❌ Извините, по Вашему запросу ничего не найдено 😞';
-    }
-  };
-
-  // Открытие и закрытие модального окна корзины покупок
-
-  const showCardBasket = goods => goods.filter(item => goodsBasket.hasOwnProperty(item.id));
-
-  const openBasket = event => {
-    event.preventDefault();
-    cart.style.display = 'flex';
-    document.addEventListener('keyup', closeBasket);
-    getGoods(renderBasket, showCardBasket);
-  };
-
-  const closeBasket = event => {
-    const target = event.target;
-    if (target === cart || target.classList.contains('cart-close') || event.keyCode === 27) {
-      cart.style.display = '';
-      document.removeEventListener('keyup', closeBasket);
-    }
-  };
-
   // Рендер товаров в корзине
   const createCardGoodsBasket = (id, title, price, img) => {
     const card = document.createElement('div');
@@ -100,10 +83,24 @@ document.addEventListener('DOMContentLoaded', () => {
                data-goods-id="${id}"></button>
 							<button class="goods-delete" data-goods-id="${id}"></button>
 						</div>
-						<div class="goods-count">1</div>
+						<div class="goods-count">${goodsBasket[id]}</div>
 					</div>
     `;
     return card;
+  };
+
+  // Перебор и вывод товаров по запросу
+
+  const renderCard = goods => {
+    goodsWrapper.textContent = '';
+
+    if (goods.length) {
+      goods.forEach(({ id, title, price, imgMin }) => {
+        goodsWrapper.append(createCardGoods(id, title, price, imgMin));
+      });
+    } else {
+      goodsWrapper.textContent = '❌ Извините, по Вашему запросу ничего не найдено 😞';
+    }
   };
 
   // Вывод товаров в корзине
@@ -120,18 +117,92 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  // Подсчет суммы товаров в корзине
+  const calcTotalPrice = goods => {
+    let sum = goods.reduce((accum, item) => {
+      return accum + (item.price * goodsBasket[item.id]);
 
-  // Получение информации о товарах из базы данных
-  const getGoods = (handler, filter) => {
-    loading();
-    fetch('db/db.json')
-      .then(response => response.json())
-      .then(filter)
-      .then(handler);
+    }, 0);
+
+    // Вариант подсчета суммы в корзине через цикл for
+    // for (const item of goods) {
+    //   sum += item.price * goodsBasket[item.id];
+    // }
+
+    cart.querySelector('.cart-total>span').textContent = sum.toFixed(2);
+  };
+
+  const checkCount = () => {
+    wishlistCounter.textContent = wishlist.length;
+    cardCounter.textContent = Object.keys(goodsBasket).length;
+  };
+
+  // Фильтры
+
+  const showCardBasket = goods => {
+    const basketGoods = goods.filter(item => goodsBasket.hasOwnProperty(item.id));
+    calcTotalPrice(basketGoods);
+    return basketGoods;
   };
 
   const randomSort = item => item.sort(() => Math.random() - 0.5);
 
+  const showWishlist = () => {
+    getGoods(renderCard, goods => goods.filter(item => wishlist.includes(item.id)));
+  };
+
+
+  // Работа с хранилищами
+
+  const getCookie = name => {
+    let matches = document.cookie.match(new RegExp(
+      "(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
+    ));
+    return matches ? decodeURIComponent(matches[1]) : undefined;
+  };
+
+  const cookieQuery = get => {
+    if (get) {
+      if (getCookie('goodsBasket')) {
+        Object.assign(goodsBasket, JSON.parse(getCookie('goodsBasket')));
+      }
+      checkCount();
+    } else {
+      document.cookie = `goodsBasket=${JSON.stringify(goodsBasket)}; max-age=86400e3`;
+    }
+  };
+
+  const storageQuery = get => {
+
+    if (get) {
+      if (localStorage.getItem('wishlist')) {
+        wishlist.push(...JSON.parse(localStorage.getItem('wishlist')));
+      }
+      checkCount();
+    } else {
+      localStorage.setItem('wishlist', JSON.stringify(wishlist));
+    }
+  };
+
+  // События
+
+  // Открытие и закрытие модального окна корзины покупок
+  const closeBasket = event => {
+    const target = event.target;
+    if (target === cart || target.classList.contains('cart-close') || event.keyCode === 27) {
+      cart.style.display = '';
+      document.removeEventListener('keyup', closeBasket);
+    }
+  };
+
+  const openBasket = event => {
+    event.preventDefault();
+    cart.style.display = 'flex';
+    document.addEventListener('keyup', closeBasket);
+    getGoods(renderBasket, showCardBasket);
+  };
+
+  // Выбор категории
   const choiceCategory = event => {
     event.preventDefault();
     const target = event.target;
@@ -142,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Реализация поиска товара
+  // Поиск товара
   const searchGoods = event => {
     event.preventDefault();
 
@@ -161,38 +232,33 @@ document.addEventListener('DOMContentLoaded', () => {
     input.value = '';
   };
 
-  // Добавление, сохранение и просмотр товаров в избранном
-
-  const getCookie = name => {
-    let matches = document.cookie.match(new RegExp(
-      "(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
-    ));
-    return matches ? decodeURIComponent(matches[1]) : undefined;
+  // Удаление товаров из корзины
+  const removeGoods = id => {
+    delete goodsBasket[id];
+    checkCount();
+    cookieQuery();
+    getGoods(renderBasket, showCardBasket);
   };
 
-  const cookieQuery = get => {
-    if (get) {
-      goodsBasket = JSON.parse(getCookie('goodsBasket'));
-      checkCount();
-    } else {
-      document.cookie = `goodsBasket=${JSON.stringify(goodsBasket)}; max-age=86400e3`;
+  // handlers
+  const handlerGoods = event => {
+    const target = event.target;
+
+    if (target.classList.contains('card-add-wishlist')) {
+      toggleWishlist(target.dataset.goodsId, target);
+    }
+    if (target.classList.contains('card-add-cart')) {
+      addBasket(target.dataset.goodsId);
     }
   };
 
-  const checkCount = () => {
-    wishlistCounter.textContent = wishlist.length;
-    cardCounter.textContent = Object.keys(goodsBasket).length;
-  };
-
-  const storageQuery = get => {
-
-    if (get) {
-      if (localStorage.getItem('wishlist')) {
-        JSON.parse(localStorage.getItem('wishlist')).forEach(id => wishlist.push(id));
-      }
-      checkCount();
-    } else {
-      localStorage.setItem('wishlist', JSON.stringify(wishlist));
+  const handlerBasket = event => {
+    const target = event.target;
+    if (target.classList.contains('goods-add-wishlist')) {
+      toggleWishlist(target.dataset.goodsId, target);
+    }
+    if (target.classList.contains('goods-delete')) {
+      removeGoods(target.dataset.goodsId);
     }
   };
 
@@ -209,10 +275,6 @@ document.addEventListener('DOMContentLoaded', () => {
     storageQuery();
   };
 
-  const showWishlist = () => {
-    getGoods(renderCard, goods => goods.filter(item => wishlist.includes(item.id)));
-  };
-
   const addBasket = id => {
     if (goodsBasket[id]) {
       goodsBasket[id] += 1;
@@ -223,35 +285,19 @@ document.addEventListener('DOMContentLoaded', () => {
     cookieQuery();
   };
 
-  const handlerGoods = event => {
-    const target = event.target;
+  // Инициализация
+  {
+    getGoods(renderCard, randomSort);
+    storageQuery(true);
+    cookieQuery(true);
 
-    if (target.classList.contains('card-add-wishlist')) {
-      toggleWishlist(target.dataset.goodsId, target);
-    }
-    if (target.classList.contains('card-add-cart')) {
-      addBasket(target.dataset.goodsId);
-    }
+    cartBtn.addEventListener('click', openBasket);
+    cart.addEventListener('click', closeBasket);
+    category.addEventListener('click', choiceCategory);
+    search.addEventListener('submit', searchGoods);
+    goodsWrapper.addEventListener('click', handlerGoods);
+    cartWrapper.addEventListener('click', handlerBasket);
+    wishlistBtn.addEventListener('click', showWishlist);
   };
-
-  cartBtn.addEventListener('click', openBasket);
-  cart.addEventListener('click', closeBasket);
-  category.addEventListener('click', choiceCategory);
-  search.addEventListener('submit', searchGoods);
-  goodsWrapper.addEventListener('click', handlerGoods);
-  wishlistBtn.addEventListener('click', showWishlist);
-
-
-
-  getGoods(renderCard, randomSort);
-
-  storageQuery(true);
-
-  cookieQuery(true);
-
-
-
-
-
 
 });
